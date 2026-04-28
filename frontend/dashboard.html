@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NeuroNest — Dashboard</title>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+<nav>
+  <a href="index.html" class="nav-logo">
+    <span class="dot"></span>
+    NeuroNest
+  </a>
+  <div class="nav-links">
+    <a href="index.html">Log</a>
+    <a href="dashboard.html" class="active">Dashboard</a>
+  </div>
+</nav>
+
+<main>
+  <div class="hero" style="margin-bottom:2rem;">
+    <div class="hero-tag">📈 Intelligence Hub</div>
+    <h1>Your Focus Dashboard</h1>
+    <p>Track your productivity trends, credits, and behavioral insights.</p>
+  </div>
+
+  <div class="user-strip" id="user-strip">
+    <div class="stat-box">
+      <div class="stat-label">User</div>
+      <div class="stat-value" id="user-name" style="font-size:1.1rem;">—</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Credits</div>
+      <div class="stat-value accent" id="user-credits">—</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Total Logs</div>
+      <div class="stat-value green" id="total-logs">—</div>
+    </div>
+  </div>
+
+  <!-- Mini chart area -->
+  <div class="card" id="chart-card" style="display:none; animation-delay:0.15s;">
+    <div class="card-header">
+      <div class="card-icon">📉</div>
+      <div>
+        <div class="card-title">Productivity Trend</div>
+        <div class="card-subtitle">Last 7 entries</div>
+      </div>
+    </div>
+    <div style="position:relative;height:100px;">
+      <canvas id="trend-canvas" style="width:100%;height:100%;"></canvas>
+    </div>
+  </div>
+
+  <div class="section-label">Activity Log</div>
+
+  <div id="logs-container">
+    <div class="empty-state">
+      <div class="icon">⏳</div>
+      <p>Loading your logs...</p>
+    </div>
+  </div>
+</main>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+  const API = 'https://stunning-garbanzo-69vxjpwrpv473rj5x.github.dev/api';
+  const USER_ID = 1;
+
+  function toast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.innerHTML = `<span class="toast-icon">${type === 'success' ? '✓' : '✕'}</span> ${msg}`;
+    document.getElementById('toast-container').appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+  }
+
+  function moodEmoji(mood) {
+    const map = { Energized:'⚡', Focused:'🎯', Calm:'😌', Tired:'😴', Stressed:'😤', Motivated:'🔥', Distracted:'🌀' };
+    return map[mood] || '🧠';
+  }
+
+  function formatDate(d) {
+    return new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  }
+
+  function renderLogs(logs) {
+    const container = document.getElementById('logs-container');
+    if (!logs.length) {
+      container.innerHTML = `<div class="empty-state"><div class="icon">📭</div><p>No logs yet. <a href="index.html" style="color:var(--accent);">Log your first day →</a></p></div>`;
+      return;
+    }
+
+    document.getElementById('chart-card').style.display = 'block';
+    drawChart(logs.slice(0, 7).reverse());
+
+    container.innerHTML = logs.map((log, i) => {
+      const isBurnout = log.burnoutStatus === 'High Burnout Risk';
+      const hasSuggestion = !log.suggestion.includes('great work');
+      return `
+      <div class="log-entry" style="animation-delay:${i * 0.05}s;">
+        <div class="log-date">${formatDate(log.date)}</div>
+        <div class="log-body">
+          <div class="log-mood">${moodEmoji(log.mood)} ${log.mood}</div>
+          <div class="log-stats">
+            <span class="log-stat">📚 Study: <span>${log.studyHours}h</span></span>
+            <span class="log-stat">🌙 Sleep: <span>${log.sleepHours}h</span></span>
+            <span class="log-stat">📱 Distract: <span>${log.distractionHours}h</span></span>
+          </div>
+          ${hasSuggestion ? `<div style="margin-top:0.5rem;"><span class="suggestion-pill">💡 ${log.suggestion}</span></div>` : ''}
+        </div>
+        <div class="log-score-col">
+          <div class="score-badge">${log.productivityScore.toFixed(1)}</div>
+          <span class="burnout-badge ${isBurnout ? 'warn' : 'ok'}">${isBurnout ? '⚠ Risk' : '✓ OK'}</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function drawChart(logs) {
+    const canvas = document.getElementById('trend-canvas');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = 100;
+    const ctx = canvas.getContext('2d');
+    const scores = logs.map(l => l.productivityScore);
+    const min = Math.min(...scores);
+    const max = Math.max(...scores);
+    const range = max - min || 1;
+    const w = canvas.width;
+    const h = canvas.height;
+    const pad = { x: 20, y: 10 };
+    const iw = w - pad.x * 2;
+    const ih = h - pad.y * 2;
+    const step = iw / (scores.length - 1 || 1);
+
+    const points = scores.map((s, i) => ({
+      x: pad.x + i * step,
+      y: pad.y + ih - ((s - min) / range) * ih
+    }));
+
+    // Gradient fill
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(79,195,247,0.25)');
+    grad.addColorStop(1, 'rgba(79,195,247,0)');
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      const cx = (points[i-1].x + points[i].x) / 2;
+      ctx.bezierCurveTo(cx, points[i-1].y, cx, points[i].y, points[i].x, points[i].y);
+    }
+    ctx.lineTo(points[points.length-1].x, h);
+    ctx.lineTo(points[0].x, h);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      const cx = (points[i-1].x + points[i].x) / 2;
+      ctx.bezierCurveTo(cx, points[i-1].y, cx, points[i].y, points[i].x, points[i].y);
+    }
+    ctx.strokeStyle = '#4fc3f7';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Dots
+    points.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#4fc3f7';
+      ctx.fill();
+    });
+  }
+
+  async function loadDashboard() {
+    try {
+      const [userRes, logsRes] = await Promise.all([
+        fetch(`${API}/user/${USER_ID}`),
+        fetch(`${API}/logs/${USER_ID}`)
+      ]);
+
+      if (!userRes.ok || !logsRes.ok) throw new Error();
+
+      const user = await userRes.json();
+      const logs = await logsRes.json();
+
+      document.getElementById('user-name').textContent = user.name;
+      document.getElementById('user-credits').textContent = user.credits;
+      document.getElementById('total-logs').textContent = logs.length;
+
+      renderLogs(logs);
+    } catch (e) {
+      toast('Could not load data. Is the server running?', 'error');
+      document.getElementById('logs-container').innerHTML = `
+        <div class="empty-state">
+          <div class="icon">⚠️</div>
+          <p>Cannot connect to backend. Start the Spring Boot server on port 8080.</p>
+        </div>`;
+    }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>
